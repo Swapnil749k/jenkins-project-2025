@@ -1,0 +1,84 @@
+pipeline {
+    agent any
+    tools {
+        jdk 'jdk17'
+        nodejs 'node23'
+    }
+    environment {
+        SCANNER_HOME = tool 'sonar-scanner'
+        SONAR_TOKEN = credentials('Sonar-token')  // Must match Jenkins credentials ID
+    }
+    stages {
+        stage('Clean workspace') {
+            steps {
+                cleanWs()
+            }
+        }
+
+        stage('Checkout from Git') {
+            steps {
+                git branch: 'main', url: 'https://github.com/Cloud-with-Prashant/Jenkins-Project.git'
+            }
+        }
+
+        stage("SonarQube Analysis") {
+            steps {
+                withSonarQubeEnv('sonar-server') { // Must match Jenkins SonarQube server name
+                    sh """
+                    ${SCANNER_HOME}/bin/sonar-scanner \
+                        -Dsonar.projectName=Swiggy \
+                        -Dsonar.projectKey=Swiggy \
+                        -Dsonar.host.url=http://3.110.184.110:9000 \
+                        -Dsonar.login=${SONAR_TOKEN}
+                    """
+                }
+            }
+        }
+
+        stage("Quality Gate") {
+            steps {
+                script {
+                    timeout(time: 1, unit: 'HOURS') {
+                        waitForQualityGate abortPipeline: true
+                    }
+                }
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                sh "npm install"
+            }
+        }
+
+        stage('TRIVY FS SCAN') {
+            steps {
+                sh "trivy fs . > trivyfs.txt"
+            }
+        }
+
+        stage("Docker Build & Push") {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'docker-creds', toolName: 'docker') {
+                        sh "docker build -t swiggy ."
+                        sh "docker tag swiggy swapnil312/swiggy:latest"
+                        sh "docker push swapnil312/swiggy:latest"
+                    }
+                }
+            }
+        }
+
+        stage("TRIVY Image Scan") {
+            steps {
+                sh "trivy image swapnil312/swiggy:latest > trivy.txt"
+            }
+        }
+
+        stage('Deploy to container') {
+            steps {
+                sh 'docker run -d --name swiggy -p 3000:3000 swapnil312/swiggy:latest'
+            }
+        }
+    }
+}
