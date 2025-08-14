@@ -104,4 +104,4 @@ Security-first approach with Trivy
 
 Continuous Integration & Deployment with Jenkins
 
-Scalable & containerized deployment using Docker & AWS
+Scalable & containerized deployment using Docker & AWS.
